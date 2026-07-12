@@ -44,14 +44,18 @@ LLM_MODEL = os.environ.get("LLM_MODEL", "llama-3.3-70b-versatile")
 ASR_BASE = os.environ.get("ASR_BASE_URL", "https://api.groq.com/openai/v1")
 ASR_MODEL = os.environ.get("ASR_MODEL", "whisper-large-v3")
 ASR_LANG = os.environ.get("ASR_LANG", "zh")
-PROXY = os.environ.get("SFE_PROXY", "")  # 例: http://127.0.0.1:7890，云端接口国内直连不通时填
-WEBHOOK = os.environ.get("SFE_WEBHOOK", "")  # 分析结果POST到这里，接你自己的AI
+# 环境变量用直白名字；SFE_前缀的旧名继续兼容
+def _env(name, default=""):
+    return os.environ.get(name, "") or os.environ.get("SFE_" + name, "") or default
+
+PROXY = _env("PROXY")  # 例: http://127.0.0.1:7890，云端接口国内直连不通时填
+WEBHOOK = _env("WEBHOOK")  # 分析结果POST到这里，接你自己的AI
 KEEP_AUDIO = os.environ.get("KEEP_AUDIO", "0") == "1"
 # 情绪标签：为"家里养了个AI"的场景设计，逗号分隔可自定义
-EMOTIONS = [e.strip() for e in os.environ.get(
-    "SFE_EMOTIONS", "开心,兴奋,撒娇,平静,累,低落,委屈,生气,嘴硬,紧张").split(",") if e.strip()]
+EMOTIONS = [e.strip() for e in _env(
+    "EMOTIONS", "开心,兴奋,撒娇,平静,累,低落,委屈,生气,嘴硬,紧张").split(",") if e.strip()]
 
-DATA_DIR = Path(os.environ.get("SFE_DATA", str(BASE_DIR / "data")))
+DATA_DIR = Path(_env("DATA", str(BASE_DIR / "data")))
 LOG_FILE = DATA_DIR / "moments.jsonl"
 PROFILE_FILE = DATA_DIR / "profile.json"
 CLIPS_DIR = DATA_DIR / "clips"
@@ -254,8 +258,8 @@ async def listen(file: UploadFile = File(...)):
         f.write(json.dumps(entry, ensure_ascii=False) + "\n")
     fire_webhook(entry)
     baseline_n = min(len(load_profile().get("pitch_hz", [])), BASELINE_MIN)
-    return {"text": text, "emotion": entry["emotion"], "confidence": entry["confidence"],
-            "hint": entry["hint"], "relative": rel,
+    return {"ts": entry["ts"], "text": text, "emotion": entry["emotion"],
+            "confidence": entry["confidence"], "hint": entry["hint"], "relative": rel,
             "baseline_progress": f"{baseline_n}/{BASELINE_MIN}"}
 
 
@@ -265,6 +269,41 @@ async def recent(n: int = 20):
         return []
     lines = LOG_FILE.read_text(encoding="utf-8").splitlines()[-n:]
     return [json.loads(l) for l in lines]
+
+
+def rebuild_profile(entries: list) -> None:
+    """按剩余记录重建基线——删掉的那条，连它教给基线的东西一起忘掉"""
+    prof = {}
+    for e in entries[-BASELINE_KEEP:]:
+        f = e.get("features", {})
+        for k in BASELINE_KEYS:
+            if f.get(k):
+                prof.setdefault(k, []).append(f[k])
+    DATA_DIR.mkdir(parents=True, exist_ok=True)
+    PROFILE_FILE.write_text(json.dumps(prof, ensure_ascii=False), encoding="utf-8")
+
+
+@app.post("/api/forget")
+def forget(body: dict):
+    """删一条记录：{"ts":"..."} 指定删，{"last":true} 删最近一条。基线同步重建。"""
+    if not LOG_FILE.exists():
+        return {"ok": False, "error": "还没有任何记录"}
+    entries = [json.loads(l) for l in LOG_FILE.read_text(encoding="utf-8").splitlines() if l.strip()]
+    before = len(entries)
+    if body.get("last"):
+        if entries:
+            entries.pop()
+    elif body.get("ts"):
+        entries = [e for e in entries if e.get("ts") != body["ts"]]
+    else:
+        return {"ok": False, "error": "要传 ts 或 last:true"}
+    if len(entries) == before:
+        return {"ok": False, "error": "没找到这条记录"}
+    LOG_FILE.write_text(
+        "\n".join(json.dumps(e, ensure_ascii=False) for e in entries) + ("\n" if entries else ""),
+        encoding="utf-8")
+    rebuild_profile(entries)
+    return {"ok": True, "remaining": len(entries)}
 
 
 @app.get("/")

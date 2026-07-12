@@ -35,6 +35,11 @@ h1 small { display: block; font-size: .68rem; color: var(--sub); font-weight: 40
 .card {
   background: var(--card); border-radius: 16px; padding: 14px 16px;
   box-shadow: 0 2px 12px rgba(0,0,0,.05); animation: pop .25s ease-out;
+  position: relative;
+}
+.card .del {
+  position: absolute; top: 10px; right: 12px; color: var(--sub);
+  font-size: .8rem; cursor: pointer; padding: 2px 6px; opacity: .6;
 }
 @keyframes pop { from { transform: translateY(8px); opacity: 0; } }
 .emo-row { display: flex; align-items: center; gap: 8px; margin-bottom: 8px; }
@@ -100,6 +105,18 @@ async function send() {
       `<div class="emo-row"><span class="emo-tag">${EMOJI[d.emotion] || "💭"} ${d.emotion}</span>` +
       `<span class="hint">${d.hint || ""}</span></div>` +
       `<div class="said">${d.text}</div>` + rel;
+    // 反悔键：删掉这条记录，基线也当没听过
+    const del = document.createElement("span");
+    del.className = "del"; del.textContent = "✕";
+    del.addEventListener("click", async () => {
+      try {
+        await fetch("/api/forget", { method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ ts: d.ts }) });
+        card.remove(); tip.textContent = "删掉了，就当没听过";
+      } catch (_) { tip.textContent = "删除失败，再试一次"; }
+    });
+    card.appendChild(del);
     out.prepend(card);
     tip.textContent = "听到了 ♡";
     bl.textContent = d.baseline_progress && !d.baseline_progress.startsWith("8/")
