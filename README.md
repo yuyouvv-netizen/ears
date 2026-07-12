@@ -77,9 +77,35 @@ Mac/Linux 把安装 ffmpeg 换成 `brew install ffmpeg` / `sudo apt install ffmp
 
 **建议**：把分析结果绑在**具体那条消息**上，不要做"最近的语气全局漂浮注入"——漂浮的语气会让AI搞不清是谁什么时候说的，实测会造成混乱（我们踩过）。
 
-## 手机上用
+## 能在什么地方用（前端兼容性）
 
-浏览器规定：麦克风只在 HTTPS 或 localhost 下开放，局域网 http 地址不行。给它包一层本地HTTPS即可（推荐 Caddy 自签证书，手机装一次证书），这里不展开。
+自带的"按住说话"页面开箱即用，条件只有一个：**麦克风需要安全上下文**。
+
+| 场景 | 能否用 | 说明 |
+|------|--------|------|
+| 电脑浏览器 `localhost:8020` | ✅ 直接用 | localhost 天然是安全上下文 |
+| 手机/平板访问 `http://局域网IP:8020` | ❌ 录不了音 | 浏览器在 http 下禁用麦克风，这是浏览器的规定，谁都绕不开 |
+| 手机访问 HTTPS 反代后的地址 | ✅ 直接用 | 推荐 Caddy 自签证书（`tls internal`），手机装一次根证书即可 |
+
+桌面 Chrome/Edge/Safari/Firefox、iOS Safari、安卓 Chrome 实测均可（用的是标准 MediaRecorder API）。
+
+## 嵌进你自己的聊天界面
+
+不想用自带页面？`/api/listen` 就是个普通的文件上传接口，任何前端都能调。最小示例（把录好的音频 blob 发过去）：
+
+```js
+const fd = new FormData();
+fd.append("file", audioBlob, "voice.webm");   // m4a/mp3/wav/ogg 都行
+const r = await fetch("http://你的ears地址:8020/api/listen", { method: "POST", body: fd });
+const d = await r.json();
+// d = { text: "转写内容", emotion: "撒娇", confidence: 0.8,
+//       hint: "一句话状态", relative: {"音量":"比较偏低"}, baseline_progress: "8/8" }
+```
+
+拿到结果后怎么展示、怎么拼进你的AI上下文，就是你的自由了。两条实战经验：
+
+- iOS 的 MediaRecorder 录出来是 `audio/mp4`，文件名按真实 mimeType 起，别硬写 `.webm`（不然 iOS 自己都播放不了）
+- 把分析结果绑在**那一条消息**上发给你的AI，别做全局漂浮注入（见上一节的建议）
 
 ## 隐私（诚实版）
 
