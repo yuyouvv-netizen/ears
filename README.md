@@ -46,7 +46,7 @@ python -m venv venv
 
 # 配置
 copy .env.example .env
-# 用记事本打开 .env，填上你的 GROQ_API_KEY（国内用户同时填 SFE_PROXY 代理端口）
+# 用记事本打开 .env，填上你的 GROQ_API_KEY（国内用户同时填 PROXY 代理端口）
 ```
 
 Mac/Linux 把安装 ffmpeg 换成 `brew install ffmpeg` / `sudo apt install ffmpeg`，路径斜杠反过来即可。
@@ -54,8 +54,10 @@ Mac/Linux 把安装 ffmpeg 换成 `brew install ffmpeg` / `sudo apt install ffmp
 ## 运行
 
 ```powershell
-.\venv\Scripts\python.exe -m uvicorn server:app --host 0.0.0.0 --port 8020
+.\venv\Scripts\python.exe -m uvicorn server:app --host 127.0.0.1 --port 8020
 ```
+
+默认只绑本机（接口没有鉴权，绑 `0.0.0.0` 意味着局域网里任何设备都能删你的记录、往你的基线里灌声音）。手机场景走HTTPS反代（见下），反代在同一台机器上，`127.0.0.1` 照样通。真要直接暴露到局域网，把 host 改成 `0.0.0.0`，风险自担。
 
 浏览器打开 `http://localhost:8020`，按住圆按钮说句话。第一次会显示"准备中…"（在要麦克风权限），变成"松开听你说"再开口。
 
@@ -129,7 +131,7 @@ const d = await r.json();
 录音太短（<0.5秒）时 Whisper 会幻觉。ears 已在服务端拦截过短录音，遇到就重说一次。
 
 **Q：报错 ProxyError / 连不上 api.groq.com？**
-国内网络需要代理。`.env` 里 `SFE_PROXY` 填你的代理端口：Clash 默认 `http://127.0.0.1:7890`，v2rayN 默认 `http://127.0.0.1:10809`。代理软件掉线也是同样报错。
+国内网络需要代理。`.env` 里 `PROXY` 填你的代理端口：Clash 默认 `http://127.0.0.1:7890`，v2rayN 默认 `http://127.0.0.1:10809`。代理软件掉线也是同样报错。
 
 **Q：Windows 上中文乱码/奇怪的编码报错？**
 本项目所有IO都显式UTF-8，正常不会遇到。如果你改代码，记住Windows三坑：subprocess 要 `encoding="utf-8"`、写文件要 `encoding="utf-8"`、别用bat解析.env。

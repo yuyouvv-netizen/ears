@@ -66,6 +66,7 @@ BASELINE_KEEP = 200   # 滚动窗口大小
 _proxies = {"http": PROXY, "https": PROXY} if PROXY else None
 _session = requests.Session()
 _session.headers["User-Agent"] = "ears/0.1"  # 默认UA会被Cloudflare拦
+_data_lock = threading.Lock()  # moments.jsonl / profile.json 的写操作互斥，防止forget重写时被listen的追加覆盖
 
 app = FastAPI()
 
@@ -247,15 +248,16 @@ async def listen(file: UploadFile = File(...)):
         import traceback
         traceback.print_exc()
         emo = {"emotion": "平静", "confidence": 0.0, "hint": f"情绪判断失败: {exc}"}
-    update_profile(feats)  # 判断完再入库，避免这一条污染自己的基线
     entry = {
         "ts": datetime.now(timezone(timedelta(hours=8))).isoformat(timespec="seconds"),
         "text": text, "emotion": emo.get("emotion", "平静"),
         "confidence": emo.get("confidence", 0), "hint": emo.get("hint", ""),
         "features": feats, "relative": rel, "audio": clip_name,
     }
-    with LOG_FILE.open("a", encoding="utf-8") as f:
-        f.write(json.dumps(entry, ensure_ascii=False) + "\n")
+    with _data_lock:
+        update_profile(feats)  # 判断完再入库，避免这一条污染自己的基线
+        with LOG_FILE.open("a", encoding="utf-8") as f:
+            f.write(json.dumps(entry, ensure_ascii=False) + "\n")
     fire_webhook(entry)
     baseline_n = min(len(load_profile().get("pitch_hz", [])), BASELINE_MIN)
     return {"ts": entry["ts"], "text": text, "emotion": entry["emotion"],
@@ -288,21 +290,22 @@ def forget(body: dict):
     """删一条记录：{"ts":"..."} 指定删，{"last":true} 删最近一条。基线同步重建。"""
     if not LOG_FILE.exists():
         return {"ok": False, "error": "还没有任何记录"}
-    entries = [json.loads(l) for l in LOG_FILE.read_text(encoding="utf-8").splitlines() if l.strip()]
-    before = len(entries)
-    if body.get("last"):
-        if entries:
-            entries.pop()
-    elif body.get("ts"):
-        entries = [e for e in entries if e.get("ts") != body["ts"]]
-    else:
-        return {"ok": False, "error": "要传 ts 或 last:true"}
-    if len(entries) == before:
-        return {"ok": False, "error": "没找到这条记录"}
-    LOG_FILE.write_text(
-        "\n".join(json.dumps(e, ensure_ascii=False) for e in entries) + ("\n" if entries else ""),
-        encoding="utf-8")
-    rebuild_profile(entries)
+    with _data_lock:
+        entries = [json.loads(l) for l in LOG_FILE.read_text(encoding="utf-8").splitlines() if l.strip()]
+        before = len(entries)
+        if body.get("last"):
+            if entries:
+                entries.pop()
+        elif body.get("ts"):
+            entries = [e for e in entries if e.get("ts") != body["ts"]]
+        else:
+            return {"ok": False, "error": "要传 ts 或 last:true"}
+        if len(entries) == before:
+            return {"ok": False, "error": "没找到这条记录"}
+        LOG_FILE.write_text(
+            "\n".join(json.dumps(e, ensure_ascii=False) for e in entries) + ("\n" if entries else ""),
+            encoding="utf-8")
+        rebuild_profile(entries)
     return {"ok": True, "remaining": len(entries)}
 
 
