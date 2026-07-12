@@ -1,0 +1,115 @@
+<!doctype html>
+<html lang="zh">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1,user-scalable=no">
+<title>ears 🎐</title>
+<style>
+:root {
+  --bg: #fff7f5; --card: #ffffff; --ink: #4a3f3c; --sub: #a08c86;
+  --main: #e8927c; --main-soft: #fbe4dd; --ring: rgba(232,146,124,.25);
+}
+@media (prefers-color-scheme: dark) {
+  :root { --bg: #211b19; --card: #2b2320; --ink: #f0e5e1; --sub: #9c8a84;
+          --main: #ef9d86; --main-soft: #3d2e29; --ring: rgba(239,157,134,.2); }
+}
+* { box-sizing: border-box; margin: 0; -webkit-tap-highlight-color: transparent; }
+body {
+  background: var(--bg); color: var(--ink); min-height: 100vh;
+  font-family: -apple-system, "PingFang SC", "Microsoft YaHei", sans-serif;
+  display: flex; flex-direction: column; align-items: center; padding: 32px 20px 40px; gap: 20px;
+}
+h1 { font-size: 1.25rem; font-weight: 600; letter-spacing: .12em; }
+h1 small { display: block; font-size: .68rem; color: var(--sub); font-weight: 400; letter-spacing: .05em; margin-top: 6px; }
+#btn {
+  width: 128px; height: 128px; border-radius: 50%; border: none; margin-top: 8px;
+  background: var(--main); color: #fff; font-size: 1rem; font-family: inherit;
+  box-shadow: 0 6px 24px var(--ring); transition: transform .15s;
+  touch-action: none; -webkit-user-select: none; user-select: none;
+}
+#btn.rec { transform: scale(1.1); box-shadow: 0 0 0 14px var(--ring); animation: breathe 1.4s infinite; }
+@keyframes breathe { 50% { box-shadow: 0 0 0 22px transparent; } }
+#tip { font-size: .78rem; color: var(--sub); min-height: 1.2em; }
+#baseline { font-size: .72rem; color: var(--sub); }
+#out { width: 100%; max-width: 440px; display: flex; flex-direction: column; gap: 12px; }
+.card {
+  background: var(--card); border-radius: 16px; padding: 14px 16px;
+  box-shadow: 0 2px 12px rgba(0,0,0,.05); animation: pop .25s ease-out;
+}
+@keyframes pop { from { transform: translateY(8px); opacity: 0; } }
+.emo-row { display: flex; align-items: center; gap: 8px; margin-bottom: 8px; }
+.emo-tag {
+  font-size: .8rem; padding: 3px 12px; border-radius: 999px;
+  background: var(--main-soft); color: var(--main); font-weight: 600;
+}
+.hint { font-size: .74rem; color: var(--sub); }
+.said { font-size: .95rem; line-height: 1.6; }
+.rel { font-size: .7rem; color: var(--sub); margin-top: 8px; }
+</style>
+</head>
+<body>
+<h1>ears 🎐<small>让你的AI听懂你的语气</small></h1>
+<button id="btn">按住说话</button>
+<div id="tip">说出来，让它听见</div>
+<div id="baseline"></div>
+<div id="out"></div>
+<script>
+const EMOJI = {"开心":"😊","兴奋":"🤩","撒娇":"🥺","平静":"😌","累":"😮‍💨",
+               "低落":"🌧️","委屈":"🥹","生气":"😤","嘴硬":"😾","紧张":"😳"};
+const btn = document.getElementById("btn"), out = document.getElementById("out"),
+      tip = document.getElementById("tip"), bl = document.getElementById("baseline");
+let mr, chunks = [], stream = null, holding = false;
+
+async function start() {
+  holding = true;
+  btn.textContent = "准备中…";
+  try {
+    // 复用麦克风流：首次授权后，之后每次按下都能秒开录
+    if (!stream || !stream.active) stream = await navigator.mediaDevices.getUserMedia({ audio: true });
+  } catch (_) { tip.textContent = "需要麦克风权限（要在HTTPS或localhost下）"; btn.textContent = "按住说话"; holding = false; return; }
+  if (!holding) { btn.textContent = "按住说话"; return; }  // 授权/预热期间手已松开
+  chunks = [];
+  mr = new MediaRecorder(stream);
+  mr.ondataavailable = (e) => chunks.push(e.data);
+  mr.onstop = send;
+  mr.start();
+  btn.classList.add("rec"); btn.textContent = "松开听你说";
+}
+function stop() {
+  holding = false;
+  if (mr && mr.state !== "inactive") mr.stop();
+  btn.classList.remove("rec"); btn.textContent = "按住说话";
+}
+async function send() {
+  const mime = (mr.mimeType || "audio/webm").split(";")[0];
+  const ext = mime.includes("mp4") ? "m4a" : mime.includes("ogg") ? "ogg" : "webm";
+  const blob = new Blob(chunks, { type: mime });
+  if (blob.size < 1000) { tip.textContent = "太短啦，再说一次"; return; }
+  tip.textContent = "在听了…";
+  const fd = new FormData();
+  fd.append("file", blob, "voice." + ext);
+  try {
+    const r = await fetch("/api/listen", { method: "POST", body: fd });
+    const d = await r.json();
+    if (d.error) { tip.textContent = d.error; return; }
+    const card = document.createElement("div");
+    card.className = "card";
+    const rel = d.relative && Object.keys(d.relative).length
+      ? `<div class="rel">和平时比: ${Object.entries(d.relative).map(([k,v]) => k+" "+v).join("，")}</div>` : "";
+    card.innerHTML =
+      `<div class="emo-row"><span class="emo-tag">${EMOJI[d.emotion] || "💭"} ${d.emotion}</span>` +
+      `<span class="hint">${d.hint || ""}</span></div>` +
+      `<div class="said">${d.text}</div>` + rel;
+    out.prepend(card);
+    tip.textContent = "听到了 ♡";
+    bl.textContent = d.baseline_progress && !d.baseline_progress.startsWith("8/")
+      ? `正在认识你的声音 ${d.baseline_progress}` : "已认识你的声音 ♪";
+  } catch (_) { tip.textContent = "网络出错，再试一次"; }
+}
+btn.addEventListener("pointerdown", (e) => { e.preventDefault(); start(); });
+btn.addEventListener("pointerup", stop);
+btn.addEventListener("pointercancel", stop);
+btn.addEventListener("pointerleave", () => { if (mr && mr.state === "recording") stop(); });
+</script>
+</body>
+</html>
