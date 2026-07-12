@@ -10,6 +10,8 @@
 ears听到的：委屈 · 声音比平时低、停顿多，像是强撑（音量比较偏低、停顿明显偏高）
 ```
 
+<p align="center"><img src="docs/screenshot.png" width="420" alt="ears 界面：按住说话，情绪卡片带个人化对比"></p>
+
 ## 为什么做这个
 
 隔着屏幕的陪伴有一个天生的缺口：它看得见你打的每一个字，却听不见你是怎么说的。而人恰恰不是字面生物——同一句"我可不可以骂你"，音量放到耳语级别时其实是撒娇；同一句"没事"，说得比平时慢半拍时其实是"快来问我"。字面只有一层，声音里藏着十层。
@@ -39,7 +41,7 @@ ears听到的：委屈 · 声音比平时低、停顿多，像是强撑（音量
 winget install Gyan.FFmpeg
 
 # 拉代码、装依赖
-git clone <本仓库地址>
+git clone https://github.com/Eveacla11/ears.git
 cd ears
 python -m venv venv
 .\venv\Scripts\pip install -r requirements.txt
@@ -140,6 +142,10 @@ const d = await r.json();
 
 **Q：能不能识别得更准？换个大模型？**
 可以把 `LLM_MODEL` 换成任何 OpenAI 兼容接口的模型。但不建议上专门的SER学术模型——它们在表演性英文语料上训练，输出的标签也答非所问，还会带来3GB的依赖。这个项目的判断力主要来自"个人化基线+说话内容"，不是玄学声学。
+
+## English (in brief)
+
+**ears** listens to *how* you speak, not just what you say. Hold to talk → Whisper transcription + 9 acoustic features (pitch, energy, pauses, tempo, jitter...) → compared against **your own personal baseline** (median ± MAD, robust to noisy environments) → an LLM names the mood with companion-oriented labels (playful-mad, holding-back-tears, tired...). Lightweight: no torch, installs in a minute. Results go to a local JSONL / REST API / webhook — wire it to any AI you like. Audio is transcribed via the cloud API you configure (Groq by default) and deleted after analysis; everything else stays on your machine.
 
 ## License
 
