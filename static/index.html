@@ -41,6 +41,10 @@ h1 small { display: block; font-size: .68rem; color: var(--sub); font-weight: 40
   position: absolute; top: 10px; right: 12px; color: var(--sub);
   font-size: .8rem; cursor: pointer; padding: 2px 6px; opacity: .6;
 }
+.card .copy {
+  position: absolute; top: 10px; right: 36px; color: var(--sub);
+  font-size: .8rem; cursor: pointer; padding: 2px 6px; opacity: .6;
+}
 @keyframes pop { from { transform: translateY(8px); opacity: 0; } }
 .emo-row { display: flex; align-items: center; gap: 8px; margin-bottom: 8px; }
 .emo-tag {
@@ -117,6 +121,25 @@ async function send() {
       } catch (_) { tip.textContent = "删除失败，再试一次"; }
     });
     card.appendChild(del);
+    // 复制键：把"说了什么+怎么说的"拼成一句，粘到任何AI聊天框都能用
+    const cp = document.createElement("span");
+    cp.className = "copy"; cp.textContent = "⧉";
+    cp.addEventListener("click", async () => {
+      const relTxt = d.relative && Object.keys(d.relative).length
+        ? "，和平时比" + Object.entries(d.relative).map(([k, v]) => k + v).join("、") : "";
+      const line = `[语音] ${d.text}（语气：${d.emotion}，${d.hint || ""}${relTxt}）`;
+      try {
+        await navigator.clipboard.writeText(line);
+        tip.textContent = "复制好了，去粘给它吧";
+      } catch (_) {
+        // http非安全环境的兜底
+        const ta = document.createElement("textarea");
+        ta.value = line; document.body.appendChild(ta); ta.select();
+        document.execCommand("copy"); ta.remove();
+        tip.textContent = "复制好了，去粘给它吧";
+      }
+    });
+    card.appendChild(cp);
     out.prepend(card);
     tip.textContent = "听到了 ♡";
     bl.textContent = d.baseline_progress && !d.baseline_progress.startsWith("8/")

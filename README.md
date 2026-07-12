@@ -104,6 +104,8 @@ const d = await r.json();
 //       hint: "一句话状态", relative: {"音量":"比较偏低"}, baseline_progress: "8/8" }
 ```
 
+**用不了插件的封闭app**（claude.ai / ChatGPT 官方应用这类）也有笨办法：对着 ears 说话 → 点结果卡片上的 ⧉ 复制 → 粘进任何聊天框。复制出来的是一句完整的话：`[语音] 我没事（语气：委屈，声音比平时低，和平时比音量比较偏低）`——哪个AI读了都懂。
+
 拿到结果后怎么展示、怎么拼进你的AI上下文，就是你的自由了。两条实战经验：
 
 - iOS 的 MediaRecorder 录出来是 `audio/mp4`，文件名按真实 mimeType 起，别硬写 `.webm`（不然 iOS 自己都播放不了）
